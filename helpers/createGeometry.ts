@@ -1,198 +1,236 @@
+import * as d3 from "d3";
 import * as THREE from "three";
 
 /**
- * Convert GeoJSON coordinates to Three.js world coordinates
+ * Convert GeoJSON using D3 projections to Three.js geometries
  */
-const geoToWorld = (lon, lat, radius = 5) => {
-  // Simple equirectangular projection for flat map
-  const x = (lon / 180) * radius;
-  const y = (lat / 90) * radius;
-  return [x, 0, -y]; // Note: -y because Three.js Y is up, but we want north to be "up" on screen
-};
-
-/**
- * Main function to use with your existing code
- * This is the function you were missing in your original example
- */
-
-/**
- * Convert GeoJSON coordinates to spherical coordinates (for globe)
- */
-const geoToSphere = (lon, lat, radius = 5) => {
-  const phi = (90 - lat) * (Math.PI / 180); // Convert to radians
-  const theta = (lon + 180) * (Math.PI / 180);
-
-  const x = radius * Math.sin(phi) * Math.cos(theta);
-  const y = radius * Math.cos(phi);
-  const z = radius * Math.sin(phi) * Math.sin(theta);
-
-  return [x, y, z];
-};
-
-/**
- * Create Three.js geometry from GeoJSON feature
- */
-const createGeometryFromFeature = (feature, options = {}) => {
-  const {
-    projection = "flat", // 'flat' or 'sphere'
-    extrudeHeight = 0.1,
-    radius = 5,
-  } = options;
-
-  const coordinates = feature.geometry.coordinates;
-  const geometryType = feature.geometry.type;
-
-  // Choose projection function
-  const projectCoords = projection === "sphere" ? geoToSphere : geoToWorld;
-
-  switch (geometryType) {
-    case "Polygon":
-      return createPolygonGeometry(
-        coordinates,
-        projectCoords,
-        extrudeHeight,
-        radius
-      );
-
-    case "MultiPolygon":
-      return createMultiPolygonGeometry(
-        coordinates,
-        projectCoords,
-        extrudeHeight,
-        radius
-      );
-
-    case "LineString":
-      return createLineGeometry(coordinates, projectCoords, radius);
-
-    default:
-      console.warn(`Unsupported geometry type: ${geometryType}`);
-      return new THREE.BoxGeometry(0.1, 0.1, 0.1); // Fallback
+class D3ToThreeConverter {
+  constructor(options = {}) {
+    this.width = options.width || 10;
+    this.height = options.height || 10;
+    this.extrudeHeight = options.extrudeHeight || 0.1;
+    this.projection = this.createProjection(
+      options.projectionType || "mercator"
+    );
+    this.pathGenerator = d3.geoPath().projection(this.projection);
   }
-};
 
-/**
- * Create geometry for a single polygon
- */
-const createPolygonGeometry = (
-  coordinates,
-  projectCoords,
-  extrudeHeight,
-  radius
-) => {
-  // coordinates[0] is the outer ring, coordinates[1+] are holes
-  const outerRing = coordinates[0];
+  /**
+   * Create D3 projection (you can use any D3 projection here)
+   */
+  createProjection(type) {
+    let projection;
 
-  // Convert coordinates to Vector2 for Shape
-  const shape = new THREE.Shape();
-
-  outerRing.forEach((coord, index) => {
-    const [x, y, z] = projectCoords(coord[0], coord[1], radius);
-    if (index === 0) {
-      shape.moveTo(x, z); // Use x,z for 2D shape (y will be extrude direction)
-    } else {
-      shape.lineTo(x, z);
+    switch (type) {
+      case "orthographic": // Globe-like
+        projection = d3.geoOrthographic();
+        break;
+      case "naturalEarth": // Nice world map projection
+        projection = d3.geoNaturalEarth1();
+        break;
+      case "mercator": // Standard web map projection
+        projection = d3.geoMercator();
+        break;
+      case "albers": // Good for specific countries/regions
+        projection = d3.geoAlbersUsa();
+        break;
+      default:
+        projection = d3.geoMercator();
     }
-  });
 
-  // Handle holes (if any)
-  const holes = coordinates.slice(1).map((hole) => {
-    const holePath = new THREE.Path();
-    hole.forEach((coord, index) => {
-      const [x, y, z] = projectCoords(coord[0], coord[1], radius);
+    return projection
+      .scale(this.width / 2 / Math.PI)
+      .translate([this.width / 2, this.height / 2]);
+  }
+
+  /**
+   * Convert a single GeoJSON feature to Three.js geometry using D3
+   */
+  createGeometryFromFeature(feature) {
+    const geometryType = feature.geometry.type;
+
+    switch (geometryType) {
+      case "Polygon":
+        return this.createPolygonGeometry(feature);
+      case "MultiPolygon":
+        return this.createMultiPolygonGeometry(feature);
+      case "LineString":
+        return this.createLineGeometry(feature);
+      default:
+        console.warn(`Unsupported geometry type: ${geometryType}`);
+        return new THREE.BoxGeometry(0.01, 0.01, 0.01);
+    }
+  }
+
+  /**
+   * Create polygon geometry using D3 path data
+   */
+  createPolygonGeometry(feature) {
+    const coordinates = feature.geometry.coordinates;
+    const outerRing = coordinates[0];
+
+    // Use D3 to project coordinates
+    const projectedCoords = outerRing.map((coord) => {
+      const projected = this.projection(coord);
+      // Convert D3 screen coordinates to Three.js world coordinates
+      return [
+        projected[0] - this.width / 2, // Center X
+        0, // Y will be extrusion
+        -(projected[1] - this.height / 2), // Center Z, flip Y
+      ];
+    });
+
+    // Create THREE.Shape from projected coordinates
+    const shape = new THREE.Shape();
+    projectedCoords.forEach((coord, index) => {
       if (index === 0) {
-        holePath.moveTo(x, z);
+        shape.moveTo(coord[0], coord[2]);
       } else {
-        holePath.lineTo(x, z);
+        shape.lineTo(coord[0], coord[2]);
       }
     });
-    return holePath;
-  });
 
-  shape.holes = holes;
+    // Handle holes (interior rings)
+    if (coordinates.length > 1) {
+      const holes = coordinates.slice(1).map((hole) => {
+        const holePath = new THREE.Path();
+        hole.forEach((coord, index) => {
+          const projected = this.projection(coord);
+          const x = projected[0] - this.width / 2;
+          const z = -(projected[1] - this.height / 2);
 
-  // Create extruded geometry
-  if (extrudeHeight > 0) {
+          if (index === 0) {
+            holePath.moveTo(x, z);
+          } else {
+            holePath.lineTo(x, z);
+          }
+        });
+        return holePath;
+      });
+      shape.holes = holes;
+    }
+
+    // Create extruded geometry
     const extrudeSettings = {
-      depth: extrudeHeight,
+      depth: this.extrudeHeight,
       bevelEnabled: false,
     };
+
     return new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  } else {
-    // Just a flat shape
-    return new THREE.ShapeGeometry(shape);
   }
-};
 
-/**
- * Create geometry for multiple polygons (like countries with islands)
- */
-const createMultiPolygonGeometry = (
-  coordinates,
-  projectCoords,
-  extrudeHeight,
-  radius
-) => {
-  const geometries = [];
+  /**
+   * Handle MultiPolygon (countries with multiple parts/islands)
+   */
+  createMultiPolygonGeometry(feature) {
+    const geometries = [];
 
-  coordinates.forEach((polygonCoords) => {
-    const geometry = createPolygonGeometry(
-      polygonCoords,
-      projectCoords,
-      extrudeHeight,
-      radius
-    );
-    geometries.push(geometry);
-  });
+    feature.geometry.coordinates.forEach((polygonCoords) => {
+      // Create a temporary feature for each polygon
+      const tempFeature = {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: polygonCoords,
+        },
+        properties: feature.properties,
+      };
 
-  // Merge all geometries into one
-  const mergedGeometry = new THREE.BufferGeometry();
-  const mergedGeometries = geometries.map((geom) => {
-    if (geom.isBufferGeometry) return geom;
-    return new THREE.BufferGeometry().fromGeometry(geom);
-  });
+      const geometry = this.createPolygonGeometry(tempFeature);
+      geometries.push(geometry);
+    });
 
-  return THREE.BufferGeometryUtils.mergeBufferGeometries(mergedGeometries);
-};
+    // Merge all geometries
+    return this.mergeGeometries(geometries);
+  }
 
-/**
- * Create line geometry (for borders, roads, etc.)
- */
-const createLineGeometry = (coordinates, projectCoords, radius) => {
-  const points = coordinates.map((coord) => {
-    const [x, y, z] = projectCoords(coord[0], coord[1], radius);
-    return new THREE.Vector3(x, y, z);
-  });
+  /**
+   * Create line geometry for borders, rivers, etc.
+   */
+  createLineGeometry(feature) {
+    const coordinates = feature.geometry.coordinates;
 
-  return new THREE.BufferGeometry().setFromPoints(points);
-};
+    const points = coordinates.map((coord) => {
+      const projected = this.projection(coord);
+      return new THREE.Vector3(
+        projected[0] - this.width / 2,
+        0,
+        -(projected[1] - this.height / 2)
+      );
+    });
 
-/**
- * Utility function to get bounding box of a feature (useful for camera positioning)
- */
-const getFeatureBounds = (feature) => {
-  const coordinates = feature.geometry.coordinates;
-  let minLon = Infinity,
-    maxLon = -Infinity;
-  let minLat = Infinity,
-    maxLat = -Infinity;
+    return new THREE.BufferGeometry().setFromPoints(points);
+  }
 
-  const processCoords = (coords) => {
-    if (typeof coords[0] === "number") {
-      // Single coordinate pair
-      minLon = Math.min(minLon, coords[0]);
-      maxLon = Math.max(maxLon, coords[0]);
-      minLat = Math.min(minLat, coords[1]);
-      maxLat = Math.max(maxLat, coords[1]);
-    } else {
-      // Array of coordinates
-      coords.forEach(processCoords);
+  /**
+   * Merge multiple geometries into one
+   */
+  mergeGeometries(geometries) {
+    if (geometries.length === 1) {
+      return geometries[0];
     }
-  };
 
-  processCoords(coordinates);
+    // Convert to BufferGeometry if needed
+    const bufferGeometries = geometries.map((geom) => {
+      if (geom.isBufferGeometry) {
+        return geom;
+      }
+      return new THREE.BufferGeometry().fromGeometry
+        ? new THREE.BufferGeometry().fromGeometry(geom)
+        : geom;
+    });
 
-  return { minLon, maxLon, minLat, maxLat };
+    // Use BufferGeometryUtils if available, otherwise return first geometry
+    if (THREE.BufferGeometryUtils) {
+      return THREE.BufferGeometryUtils.mergeBufferGeometries(bufferGeometries);
+    } else {
+      console.warn(
+        "BufferGeometryUtils not available, returning first geometry only"
+      );
+      return bufferGeometries[0];
+    }
+  }
+
+  /**
+   * Get bounding box using D3 (useful for camera positioning)
+   */
+  getFeatureBounds(feature) {
+    const bounds = d3.geoBounds(feature);
+    return {
+      minLon: bounds[0][0],
+      minLat: bounds[0][1],
+      maxLon: bounds[1][0],
+      maxLat: bounds[1][1],
+    };
+  }
+
+  /**
+   * Fit projection to feature bounds
+   */
+  fitToFeature(feature) {
+    this.projection.fitSize([this.width, this.height], feature);
+    return this;
+  }
+
+  /**
+   * Batch convert multiple features
+   */
+  convertGeoJSON(geojson) {
+    return geojson.features.map((feature) => ({
+      feature,
+      geometry: this.createGeometryFromFeature(feature),
+      bounds: this.getFeatureBounds(feature),
+    }));
+  }
+}
+
+/**
+ * Convenience function for your existing code
+ */
+const createGeometryFromFeature = (feature, options = {}) => {
+  const converter = new D3ToThreeConverter(options);
+  return converter.createGeometryFromFeature(feature);
 };
 
-export { createGeometryFromFeature, geoToSphere, geoToWorld, getFeatureBounds };
+// Export both the class and convenience function
+export { createGeometryFromFeature, D3ToThreeConverter };
