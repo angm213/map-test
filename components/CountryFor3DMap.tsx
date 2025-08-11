@@ -1,43 +1,51 @@
+import { CountryFor3DMapProps } from "@/helpers/types";
 import { useFrame } from "@react-three/fiber";
 import { useRef, useState } from "react";
-import { Text } from "react-native";
 
-const CountryFor3DMap = ({ geometry, countryData, onCountryClick }) => {
-  const [selected, setSelected] = useState<boolean>(false);
+const CountryFor3DMap: React.FC<CountryFor3DMapProps> = ({
+  geometry,
+  countryData,
+  onCountryClick,
+  isSelected,
+}) => {
   const [hovered, setHover] = useState<boolean>(false);
-  const meshRef = useRef(null);
+  const meshRef = useRef<any>(null);
 
-  const handleClick = () => {
-    setSelected((prev) => !prev);
+  const handleClick = (event: any) => {
+    event.stopPropagation();
     onCountryClick(countryData);
   };
 
-  useFrame((state, delta) => (meshRef.current.rotation.x += delta));
-
+  useFrame((state, delta) => {
+    if (meshRef.current && isSelected) {
+      meshRef.current.rotation.y += delta * 0.5;
+    }
+  });
+  console.log("inside countryfor3map");
+  console.log("geometry inside the country component: ", geometry);
   return (
     <mesh
+      ref={meshRef}
       geometry={geometry}
       onClick={handleClick}
-      onPointerOver={() => setHover(true)}
-      onPointerOut={() => setHover(false)}
-      position={[0, selected ? 0.1 : 0, 0]} // Elevate when selected
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        setHover(true);
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        setHover(false);
+        document.body.style.cursor = "auto";
+      }}
+      position={[0, isSelected ? 2 : 0, 0]} // Elevate when selected
     >
       <meshStandardMaterial
-        color={selected ? "#ff6b6b" : hovered ? "#4ecdc4" : "#95e1d3"}
-        transparent
-        opacity={hovered ? 0.8 : 0.6}
+        color={isSelected ? "#ff6b6b" : hovered ? "#4ecdc4" : "#95e1d3"}
+        opacity={hovered ? 0.9 : 0.7}
+        roughness={0.5}
+        metalness={0.2}
       />
-      {hovered && (
-        <Text
-        //   position={[0, 1, 0]}
-        //   fontSize={0.5}
-        //   color="white"
-        //   anchorX="center"
-        //   anchorY="middle"
-        >
-          {countryData.name}
-        </Text>
-      )}
     </mesh>
   );
 };

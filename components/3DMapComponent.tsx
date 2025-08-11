@@ -1,31 +1,71 @@
-import { Canvas } from "@react-three/fiber";
-import { useState } from "react";
-import CountryFor3DMap from "./CountryFor3DMap";
+import { D3ToThreeConverter } from "@/helpers/createGeometry";
+// import { CountryData, CountryFor3DMapProps } from "@/helpers/types";
+import THREE from "@/helpers/three-file";
+import { GLView } from "expo-gl";
+import { Renderer } from "expo-three";
+import { Dimensions } from "react-native";
+// import CountryFor3DMap from "./CountryFor3DMap";
 
-const MapComponent3D = ({ data }) => {
-  const [selected, setSelected] = useState<string | null>(null);
+const { width, height } = Dimensions.get("screen");
 
-  const handleCountryClick = (countryData) => {
-    setSelected(countryData);
-    console.log("Selected:", countryData.name);
+const MapComponent3D = ({ data }: { data: GeoJSON.FeatureCollection }) => {
+  const onContextCreate = async (gl) => {
+    console.log(gl);
+
+    const renderer = new Renderer({ gl });
+    renderer.setSize(width, height);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#d5d2ff");
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+    camera.position.set(0, 0, 50);
+    // camera.lookAt(0, 0, 0);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 10, 5);
+    scene.add(dirLight);
+
+    const converter = new D3ToThreeConverter({
+      width: width,
+      height: height,
+      extrudeHeight: 0.1,
+      projectionType: "orthographic",
+    });
+
+    data.features.forEach((feature) => {
+      const geometry = converter.createGeometryFromFeature(
+        feature as GeoJSON.Feature<
+          GeoJSON.Polygon | GeoJSON.MultiPolygon | GeoJSON.LineString
+        >
+      );
+      if (!geometry) return;
+
+      const material = new THREE.MeshStandardMaterial({
+        color: "#282A4A",
+        metalness: 0.1,
+        roughness: 0.8,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData = feature.properties || {};
+      scene.add(mesh);
+    });
+
+    const animate = () => {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+      gl.endFrameEXP();
+    };
+    animate();
   };
 
   return (
-    <Canvas camera={{ position: [0, 5, 10] }}>
-      <ambientLight intensity={0.6} />
-      <pointLight position={[10, 10, 10]} />
-
-      {data.features.map((feature, index) => (
-        <CountryFor3DMap
-          key={feature.properties.ISO_A3 || index}
-          geometry={createGeometryFromFeature(feature)}
-          countryData={feature.properties}
-          onCountryClick={handleCountryClick}
-        />
-      ))}
-
-      {/* Camera controls for pan/zoom */}
-      {/* <OrbitControls enablePan={true} enableZoom={true} /> */}
-    </Canvas>
+    <GLView
+      style={{ width: width, height: height }}
+      onContextCreate={onContextCreate}
+    />
   );
 };
+
+export default MapComponent3D;
