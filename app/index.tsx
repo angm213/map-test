@@ -1,8 +1,7 @@
 // import MapComponent from "@/components/MapComponent";
 // import data from "../assets/maps/europe.geo.json";
-import MapComponent3D from "@/components/3DMapComponent";
+import Sphere from "@/components/SphereAnimation";
 import { Text, View } from "react-native";
-import data from "../assets/maps/world.geo.json";
 
 // function Box(props) {
 //   const meshRef = useRef(null);
@@ -36,8 +35,9 @@ export default function Index() {
       }}
     >
       <Text>Edit app/index.tsx to edit this screen.</Text>
+      <Sphere />
       {/* <MapComponent data={data as GeoJSON.GeoJSON} onCountrySelect={onSelect} /> */}
-      <MapComponent3D data={data as GeoJSON.FeatureCollection} />
+      {/* <MapComponent3D data={data as GeoJSON.FeatureCollection} /> */}
     </View>
     // <Canvas>
     //   <ambientLight intensity={Math.PI / 2} />

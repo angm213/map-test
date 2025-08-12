@@ -59,8 +59,5 @@
       "three": "^0.179.1"
     }
   },
-  "resolutions": {
-    "three": "^0.179.1"
-  },
   "private": true
 }

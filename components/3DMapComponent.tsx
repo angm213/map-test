@@ -9,7 +9,7 @@ import { Dimensions } from "react-native";
 const { width, height } = Dimensions.get("screen");
 
 const MapComponent3D = ({ data }: { data: GeoJSON.FeatureCollection }) => {
-  const onContextCreate = async (gl) => {
+  const onContextCreate = async (gl: any) => {
     console.log(gl);
 
     const renderer = new Renderer({ gl });
@@ -19,7 +19,7 @@ const MapComponent3D = ({ data }: { data: GeoJSON.FeatureCollection }) => {
     scene.background = new THREE.Color("#d5d2ff");
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     camera.position.set(0, 0, 50);
-    // camera.lookAt(0, 0, 0);
+    camera.lookAt(0, 0, 0);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -62,7 +62,13 @@ const MapComponent3D = ({ data }: { data: GeoJSON.FeatureCollection }) => {
 
   return (
     <GLView
-      style={{ width: width, height: height }}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: width,
+        height: height,
+      }}
       onContextCreate={onContextCreate}
     />
   );

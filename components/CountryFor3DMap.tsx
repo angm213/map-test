@@ -21,8 +21,7 @@ const CountryFor3DMap: React.FC<CountryFor3DMapProps> = ({
       meshRef.current.rotation.y += delta * 0.5;
     }
   });
-  console.log("inside countryfor3map");
-  console.log("geometry inside the country component: ", geometry);
+
   return (
     <mesh
       ref={meshRef}
