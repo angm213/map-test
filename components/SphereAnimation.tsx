@@ -3,11 +3,14 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { THREE } from "expo-three";
 import { useMemo, useRef, useState } from "react";
 import data from "../assets/maps/world_small.geo.json";
-import { createGeoJSONGeometry } from "../helpers/jsonConversion";
+import {
+  createGeoJSONGeometry,
+  geoPolygonToSphereGeometry,
+} from "../helpers/jsonConversion";
 
 const RotatingSphere = ({
   radius = 15,
-  segments = 24,
+  segments = 64,
 }: {
   radius?: number;
   segments?: number;
@@ -28,8 +31,8 @@ const RotatingSphere = ({
   const sphereMaterial = new THREE.MeshBasicMaterial({
     color: "#282A4A",
     wireframe: false,
-    transparent: false,
-    opacity: 1,
+    transparent: true,
+    opacity: 0.3,
   });
   const edgesGeometry = useMemo(
     () => new THREE.EdgesGeometry(sphereGeometry),
@@ -53,27 +56,24 @@ const RotatingSphere = ({
   );
 };
 
-const Country = ({
-  lineVertices,
-}: {
-  lineVertices: Float64Array<ArrayBufferLike>;
-}) => {
+const Country = ({ coords }: { coords: THREE.BufferGeometry }) => {
   const [pressed, setPressed] = useState<boolean>(false);
 
+  const material = new THREE.MeshBasicMaterial({
+    color: pressed ? "orange" : "#B00B69",
+    transparent: false,
+    opacity: 0.7,
+  });
+
   return (
-    <lineSegments>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[lineVertices, 3]}
-        />
-      </bufferGeometry>
-      <lineBasicMaterial
-        color={pressed ? "orange" : "#B00B69"}
-        linewidth={1}
-        transparent
-      />
-    </lineSegments>
+    <mesh
+      geometry={coords}
+      material={material}
+      onClick={(e) => {
+        e.stopPropagation(); // so it doesn’t trigger parent clicks
+        setPressed((prev) => !prev);
+      }}
+    />
   );
 };
 
@@ -81,7 +81,7 @@ const Geometries = ({
   data,
   radius = 15,
 }: {
-  data: GeoJSON.GeoJSON;
+  data: GeoJSON.FeatureCollection;
   radius?: number;
 }) => {
   const mesh = useRef<THREE.Mesh>(null);
@@ -93,11 +93,10 @@ const Geometries = ({
   });
   const countryGeometries = useMemo(() => {
     if (!data) return null;
-    return createGeoJSONGeometry(data, radius, {});
+    return createGeoJSONGeometry(data, radius, { fill: true });
   }, [data, radius]);
 
   if (!countryGeometries) return null;
-
   return (
     <group>
       {countryGeometries.lineVertices.length > 0 && (
@@ -108,43 +107,17 @@ const Geometries = ({
               args={[countryGeometries.lineVertices, 3]}
             />
           </bufferGeometry>
-          <lineBasicMaterial color={"#B00B69"} linewidth={1} />
+          <lineBasicMaterial color={"orange"} linewidth={1} />
         </lineSegments>
       )}
-
-      {/* Uncomment to render points */}
-      {/* {countryGeometries.pointVertices.length > 0 && (
-        <points>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              args={[countryGeometries.pointVertices, 3]}
-            />
-          </bufferGeometry>
-          <pointsMaterial color={"red"} size={1} />
-        </points>
-      )} */}
-
-      {/* Uncomment to render filled polygons */}
-      {/* {countryGeometries.polygonVertices.length > 0 && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              args={[countryGeometries.polygonVertices, 3]}
-            />
-          </bufferGeometry>
-          <meshBasicMaterial
-            color={"#red"}
-            side={THREE.DoubleSide}
-            transparent
-            opacity={0.7}
-          />
-        </mesh>
-      )} */}
-      {/* {countryGeometries.lineVertices.map((geo, index) => (
-        <Country key={index} lineVertices={geo} />
-      ))} */}
+      {data.features.map((feature, index) => {
+        const geom = geoPolygonToSphereGeometry(
+          //@ts-ignore
+          feature.geometry.coordinates,
+          radius
+        );
+        return <Country key={index} coords={geom} />;
+      })}
     </group>
   );
 };
@@ -152,11 +125,17 @@ const Geometries = ({
 const Sphere = () => {
   return (
     <Canvas camera={{ position: [0, 0, 40] }}>
+      <OrbitControls
+        minDistance={20}
+        maxDistance={10000}
+        minPolarAngle={Math.PI / 6}
+        maxPolarAngle={Math.PI - Math.PI / 6}
+        enablePan={false}
+      />
       <group>
         <RotatingSphere />
-        <Geometries data={data as GeoJSON.GeoJSON} />
+        <Geometries data={data as GeoJSON.FeatureCollection} />
       </group>
-      <OrbitControls />
     </Canvas>
   );
 };
