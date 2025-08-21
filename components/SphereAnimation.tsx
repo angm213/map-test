@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import data from "../assets/maps/world_small.geo.json";
 import {
   createGeoJSONGeometry,
-  geoPolygonToSphereGeometry,
+  geoPolygonToSphereGeometryReactNativePure,
 } from "../helpers/jsonConversion";
 
 const RotatingSphere = ({
@@ -93,7 +93,7 @@ const Geometries = ({
   });
   const countryGeometries = useMemo(() => {
     if (!data) return null;
-    return createGeoJSONGeometry(data, radius, { fill: true });
+    return createGeoJSONGeometry(data, radius);
   }, [data, radius]);
 
   if (!countryGeometries) return null;
@@ -111,7 +111,7 @@ const Geometries = ({
         </lineSegments>
       )}
       {data.features.map((feature, index) => {
-        const geom = geoPolygonToSphereGeometry(
+        const geom = geoPolygonToSphereGeometryReactNativePure(
           //@ts-ignore
           feature.geometry.coordinates,
           radius
